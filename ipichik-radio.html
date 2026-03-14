@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPICHIK RADIO</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #1f1f1f;
+    --accent: #c8ff00;
+    --accent2: #ff3c00;
+    --text: #e8e8e0;
+    --muted: #4a4a44;
+    --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E");
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: var(--grain);
+    opacity: 0.035;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* Ambient glow */
+  .glow {
+    position: fixed;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.07;
+    pointer-events: none;
+  }
+  .glow-1 { background: var(--accent); top: -200px; left: -100px; animation: drift1 20s ease-in-out infinite; }
+  .glow-2 { background: var(--accent2); bottom: -200px; right: -100px; animation: drift2 25s ease-in-out infinite; }
+
+  @keyframes drift1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(80px, 60px) scale(1.1); }
+  }
+  @keyframes drift2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-60px, -80px) scale(0.9); }
+  }
+
+  /* Main container */
+  .container {
+    width: 100%;
+    max-width: 480px;
+    padding: 24px;
+    position: relative;
+    z-index: 10;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 32px;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 4px;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .logo span {
+    color: var(--accent);
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+
+  .live-dot.active {
+    background: var(--accent);
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  /* Visualizer */
+  .visualizer-wrap {
+    position: relative;
+    width: 100%;
+    height: 180px;
+    margin-bottom: 28px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .visualizer-wrap::after {
+    content: 'DRAG FILES HERE';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    transition: opacity 0.3s;
+    opacity: var(--drop-opacity, 1);
+  }
+
+  .visualizer-wrap.has-tracks::after {
+    display: none;
+  }
+
+  .visualizer-wrap.drag-over {
+    border-color: var(--accent);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.6s;
+  }
+
+  canvas.active {
+    opacity: 1;
+  }
+
+  /* Scan line on visualizer */
+  .visualizer-wrap::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0;
+    z-index: 2;
+    animation: scanline 4s linear infinite;
+  }
+
+  @keyframes scanline {
+    0% { top: 0; opacity: 0.4; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  /* Track info */
+  .track-info {
+    margin-bottom: 24px;
+    min-height: 52px;
+  }
+
+  .track-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 2px;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+
+  .track-title.scrolling {
+    animation: marquee 10s linear infinite;
+    white-space: nowrap;
+  }
+
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .track-artist {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* Progress */
+  .progress-wrap {
+    margin-bottom: 20px;
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 2px;
+    background: var(--border);
+    position: relative;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.5s linear;
+    position: relative;
+  }
+
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    right: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .progress-bar:hover .progress-fill::after {
+    opacity: 1;
+  }
+
+  .time-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+  }
+
+  .ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .btn:hover {
+    border-color: var(--text);
+  }
+
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .btn-play {
+    width: 56px;
+    height: 56px;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  .btn-play:hover {
+    background: #d8ff20;
+    border-color: #d8ff20;
+  }
+
+  .btn-play svg { width: 20px; height: 20px; }
+  .btn-icon svg { width: 16px; height: 16px; }
+
+  .btn-active {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* Volume */
+  .volume-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .vol-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    width: 28px;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    cursor: pointer;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--text);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  input[type=range]:hover::-webkit-slider-thumb {
+    background: var(--accent);
+  }
+
+  /* Tracklist */
+  .tracklist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .tracklist-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .tracklist-count {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+  }
+
+  .tracklist {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+  }
+
+  .tracklist::-webkit-scrollbar { width: 2px; }
+  .tracklist::-webkit-scrollbar-track { background: var(--bg); }
+  .tracklist::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .track-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  .track-item:last-child { border-bottom: none; }
+  .track-item:hover { background: var(--border); }
+  .track-item.playing { background: rgba(200, 255, 0, 0.06); }
+
+  .track-num {
+    font-size: 10px;
+    color: var(--muted);
+    width: 20px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .track-item.playing .track-num {
+    color: var(--accent);
+  }
+
+  .track-name {
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  .track-item.playing .track-name {
+    color: var(--accent);
+  }
+
+  .track-dur {
+    font-size: 10px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100px;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .upload-btn {
+    margin-top: 8px;
+    padding: 8px 16px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-tag {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .footer-tag span {
+    color: var(--accent);
+  }
+
+  /* Animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .container > * {
+    animation: fadeIn 0.5s ease forwards;
+  }
+
+  .equalizer {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+  }
+
+  .eq-bar {
+    width: 3px;
+    background: var(--accent);
+    border-radius: 1px;
+    animation: eq 0.8s ease-in-out infinite;
+  }
+
+  .eq-bar:nth-child(1) { animation-delay: 0s; height: 40%; }
+  .eq-bar:nth-child(2) { animation-delay: 0.15s; height: 100%; }
+  .eq-bar:nth-child(3) { animation-delay: 0.3s; height: 60%; }
+  .eq-bar:nth-child(4) { animation-delay: 0.1s; height: 80%; }
+
+  @keyframes eq {
+    0%, 100% { transform: scaleY(0.3); }
+    50% { transform: scaleY(1); }
+  }
+
+  .equalizer.paused .eq-bar {
+    animation-play-state: paused;
+  }
+</style>
+</head>
+<body>
+
+<div class="glow glow-1"></div>
+<div class="glow glow-2"></div>
+
+<div class="container">
+
+  <div class="header">
+    <div class="logo">IPICHIK<span>.</span>RADIO</div>
+    <div class="live-badge">
+      <div class="live-dot" id="liveDot"></div>
+      <span id="liveText">OFFLINE</span>
+    </div>
+  </div>
+
+  <!-- Visualizer / Drop zone -->
+  <div class="visualizer-wrap" id="dropZone">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <!-- Track info -->
+  <div class="track-info">
+    <div class="track-title" id="trackTitle">---</div>
+    <div class="track-artist" id="trackArtist">DROP YOUR FILES TO START</div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap">
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="time-row">
+      <span id="timeElapsed">0:00</span>
+      <span id="timeDuration">0:00</span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="ctrl-group">
+      <button class="btn btn-icon" id="btnShuffle" title="Shuffle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+        </svg>
+      </button>
+      <button class="btn btn-icon" id="btnPrev">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M19 20L9 12l10-8v16zM5 19V5"/>
+        </svg>
+      </button>
+    </div>
+
+    <button class="btn btn-play" id="btnPlay">
+      <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7L8 5z"/>
+      </svg>
+      <svg id="iconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+      </svg>
+    </button>
+
+    <div class="ctrl-group">
+      <button class="btn btn-icon" id="btnNext">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M5 4l10 8-10 8V4zM19 5v14"/>
+        </svg>
+      </button>
+      <button class="btn btn-icon" id="btnLoop" title="Loop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Volume -->
+  <div class="volume-row" style="margin-bottom:28px">
+    <span class="vol-label">VOL</span>
+    <input type="range" id="volume" min="0" max="1" step="0.01" value="0.8">
+    <div class="equalizer paused" id="equalizer">
+      <div class="eq-bar"></div>
+      <div class="eq-bar"></div>
+      <div class="eq-bar"></div>
+      <div class="eq-bar"></div>
+    </div>
+  </div>
+
+  <!-- Tracklist -->
+  <div class="tracklist-header">
+    <span class="tracklist-label">Tracklist</span>
+    <span class="tracklist-count" id="trackCount">0 tracks</span>
+  </div>
+
+  <div class="tracklist" id="tracklist">
+    <div class="empty-state" id="emptyState">
+      <span>No tracks loaded</span>
+      <button class="btn upload-btn" onclick="document.getElementById('fileInput').click()">+ ADD FILES</button>
+      <input type="file" id="fileInput" multiple accept=".mp3,.flac,.wav,.ogg,.m4a,.aac" style="display:none">
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-tag">IPICHIK <span>COLLECTIVE</span></span>
+    <span class="footer-tag">PARIS</span>
+  </div>
+
+</div>
+
+<audio id="audio"></audio>
+
+<script>
+const audio = document.getElementById('audio');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const dropZone = document.getElementById('dropZone');
+const tracklist = document.getElementById('tracklist');
+const emptyState = document.getElementById('emptyState');
+const fileInput = document.getElementById('fileInput');
+const btnPlay = document.getElementById('btnPlay');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const btnShuffle = document.getElementById('btnShuffle');
+const btnLoop = document.getElementById('btnLoop');
+const progressBar = document.getElementById('progressBar');
+const progressFill = document.getElementById('progressFill');
+const volumeSlider = document.getElementById('volume');
+const trackTitle = document.getElementById('trackTitle');
+const trackArtist = document.getElementById('trackArtist');
+const timeElapsed = document.getElementById('timeElapsed');
+const timeDuration = document.getElementById('timeDuration');
+const liveDot = document.getElementById('liveDot');
+const liveText = document.getElementById('liveText');
+const equalizer = document.getElementById('equalizer');
+const iconPlay = document.getElementById('iconPlay');
+const iconPause = document.getElementById('iconPause');
+
+let tracks = [];
+let currentIndex = 0;
+let isPlaying = false;
+let isShuffle = false;
+let isLoop = false;
+let audioCtx, analyser, source, dataArray;
+
+// Resize canvas
+function resizeCanvas() {
+  canvas.width = dropZone.clientWidth * window.devicePixelRatio;
+  canvas.height = dropZone.clientHeight * window.devicePixelRatio;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Setup Web Audio
+function setupAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  const bufferLength = analyser.frequencyBinCount;
+  dataArray = new Uint8Array(bufferLength);
+  source = audioCtx.createMediaElementSource(audio);
+  source.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  drawVisualizer();
+}
+
+// Visualizer
+function drawVisualizer() {
+  requestAnimationFrame(drawVisualizer);
+  if (!analyser) return;
+
+  const W = dropZone.clientWidth;
+  const H = dropZone.clientHeight;
+  analyser.getByteFrequencyData(dataArray);
+
+  ctx.clearRect(0, 0, W, H);
+
+  const barCount = dataArray.length;
+  const barWidth = (W / barCount) * 1.8;
+  let x = 0;
+
+  for (let i = 0; i < barCount; i++) {
+    const val = dataArray[i] / 255;
+    const barH = val * H * 0.85;
+
+    // Color based on frequency intensity
+    const hue = isPlaying ? (100 + val * 60) : 100;
+    const alpha = isPlaying ? (0.15 + val * 0.85) : 0.04;
+
+    ctx.fillStyle = `hsla(${hue}, 100%, 60%, ${alpha})`;
+    ctx.fillRect(x, H - barH, barWidth, barH);
+
+    x += barWidth + 1;
+  }
+
+  // Center line
+  ctx.strokeStyle = 'rgba(200, 255, 0, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+}
+
+// Load files
+function loadFiles(files) {
+  const audioFiles = Array.from(files).filter(f =>
+    f.type.startsWith('audio/') || /\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(f.name)
+  );
+  if (!audioFiles.length) return;
+
+  audioFiles.forEach(file => {
+    const url = URL.createObjectURL(file);
+    tracks.push({ name: cleanName(file.name), url, duration: null });
+  });
+
+  dropZone.classList.add('has-tracks');
+  renderTracklist();
+  updateCount();
+
+  if (tracks.length === audioFiles.length) {
+    loadTrack(0);
+  }
+}
+
+function cleanName(filename) {
+  return filename.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ');
+}
+
+function renderTracklist() {
+  emptyState.style.display = 'none';
+  tracklist.querySelectorAll('.track-item').forEach(el => el.remove());
+
+  tracks.forEach((t, i) => {
+    const item = document.createElement('div');
+    item.className = 'track-item' + (i === currentIndex ? ' playing' : '');
+    item.dataset.index = i;
+    item.innerHTML = `
+      <span class="track-num">${i + 1 < 10 ? '0' + (i + 1) : i + 1}</span>
+      <span class="track-name">${t.name}</span>
+      <span class="track-dur">${t.duration ? formatTime(t.duration) : '--:--'}</span>
+    `;
+    item.addEventListener('click', () => {
+      loadTrack(i);
+      playAudio();
+    });
+    tracklist.appendChild(item);
+  });
+}
+
+function updateCount() {
+  document.getElementById('trackCount').textContent = `${tracks.length} track${tracks.length !== 1 ? 's' : ''}`;
+}
+
+function loadTrack(index) {
+  currentIndex = index;
+  const track = tracks[index];
+  audio.src = track.url;
+  audio.volume = parseFloat(volumeSlider.value);
+
+  trackTitle.textContent = track.name;
+  trackArtist.textContent = 'IPICHIK RADIO';
+
+  progressFill.style.width = '0%';
+  timeElapsed.textContent = '0:00';
+  timeDuration.textContent = track.duration ? formatTime(track.duration) : '0:00';
+
+  renderTracklist();
+
+  // Scroll active track into view
+  const activeItem = tracklist.querySelector('.track-item.playing');
+  if (activeItem) activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function playAudio() {
+  setupAudio();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  audio.play();
+  isPlaying = true;
+  iconPlay.style.display = 'none';
+  iconPause.style.display = 'block';
+  canvas.classList.add('active');
+  liveDot.classList.add('active');
+  liveText.textContent = 'LIVE';
+  equalizer.classList.remove('paused');
+}
+
+function pauseAudio() {
+  audio.pause();
+  isPlaying = false;
+  iconPlay.style.display = 'block';
+  iconPause.style.display = 'none';
+  liveDot.classList.remove('active');
+  liveText.textContent = 'PAUSED';
+  equalizer.classList.add('paused');
+}
+
+function nextTrack() {
+  if (!tracks.length) return;
+  if (isShuffle) {
+    currentIndex = Math.floor(Math.random() * tracks.length);
+  } else {
+    currentIndex = (currentIndex + 1) % tracks.length;
+  }
+  loadTrack(currentIndex);
+  if (isPlaying) playAudio();
+}
+
+function prevTrack() {
+  if (!tracks.length) return;
+  if (audio.currentTime > 3) {
+    audio.currentTime = 0;
+    return;
+  }
+  currentIndex = (currentIndex - 1 + tracks.length) % tracks.length;
+  loadTrack(currentIndex);
+  if (isPlaying) playAudio();
+}
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+}
+
+// Events
+btnPlay.addEventListener('click', () => {
+  if (!tracks.length) { fileInput.click(); return; }
+  if (isPlaying) pauseAudio(); else playAudio();
+});
+
+btnNext.addEventListener('click', nextTrack);
+btnPrev.addEventListener('click', prevTrack);
+
+btnShuffle.addEventListener('click', () => {
+  isShuffle = !isShuffle;
+  btnShuffle.classList.toggle('btn-active', isShuffle);
+});
+
+btnLoop.addEventListener('click', () => {
+  isLoop = !isLoop;
+  btnLoop.classList.toggle('btn-active', isLoop);
+  audio.loop = isLoop;
+});
+
+volumeSlider.addEventListener('input', () => {
+  audio.volume = parseFloat(volumeSlider.value);
+});
+
+audio.addEventListener('timeupdate', () => {
+  if (!audio.duration) return;
+  const pct = (audio.currentTime / audio.duration) * 100;
+  progressFill.style.width = pct + '%';
+  timeElapsed.textContent = formatTime(audio.currentTime);
+});
+
+audio.addEventListener('loadedmetadata', () => {
+  timeDuration.textContent = formatTime(audio.duration);
+  tracks[currentIndex].duration = audio.duration;
+  renderTracklist();
+});
+
+audio.addEventListener('ended', () => {
+  if (!isLoop) nextTrack();
+});
+
+progressBar.addEventListener('click', (e) => {
+  if (!audio.duration) return;
+  const rect = progressBar.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = pct * audio.duration;
+});
+
+// Drag & drop
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => {
+  dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  loadFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', (e) => {
+  loadFiles(e.target.files);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); btnPlay.click(); }
+  if (e.code === 'ArrowRight') nextTrack();
+  if (e.code === 'ArrowLeft') prevTrack();
+});
+
+// Init idle visualizer
+(function idleViz() {
+  if (!analyser) {
+    requestAnimationFrame(idleViz);
+    const W = dropZone.clientWidth;
+    const H = dropZone.clientHeight;
+    ctx.clearRect(0, 0, W, H);
+    const t = Date.now() / 1000;
+    for (let i = 0; i < 60; i++) {
+      const x = (i / 60) * W;
+      const y = H / 2 + Math.sin(t * 0.8 + i * 0.3) * 8;
+      ctx.fillStyle = `rgba(200, 255, 0, 0.04)`;
+      ctx.fillRect(x, y, 3, H / 2 - y + H / 2);
+    }
+  }
+})();
+</script>
+</body>
+</html>
